@@ -18,6 +18,57 @@ GOVAI_API_URL = os.getenv("GOVAI_API_URL")
 GOVAI_API_KEY = os.getenv("GOVAI_API_KEY")
 GOVAI_MODEL = os.getenv("GOVAI_MODEL")
 
+def _repair_truncated_json(json_string):
+    """
+    Attempts to repair a truncated JSON string by closing any open
+    strings, arrays, and objects. Returns a parsed dict on success, or None.
+    """
+    s = json_string.strip()
+    if not s:
+        return None
+
+    # Track open brackets and whether we're inside a string
+    stack = []
+    in_string = False
+    escape_next = False
+
+    for char in s:
+        if escape_next:
+            escape_next = False
+            continue
+        if char == '\\' and in_string:
+            escape_next = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if char in ('{', '['):
+                stack.append(char)
+            elif char == '}':
+                if stack and stack[-1] == '{':
+                    stack.pop()
+            elif char == ']':
+                if stack and stack[-1] == '[':
+                    stack.pop()
+
+    # Close any open string first
+    if in_string:
+        s += '"'
+
+    # Remove trailing incomplete tokens (e.g. a dangling comma before closing)
+    s = s.rstrip().rstrip(',')
+
+    # Close open brackets in reverse order
+    for bracket in reversed(stack):
+        s += ']' if bracket == '[' else '}'
+
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        return None
+
+
 class VisionProcessor:
     """
     A processor that uses vision models to analyze an image.
@@ -82,7 +133,7 @@ Be specific and descriptive. Do not be vague. Always respond in English only."""
                     ]
                 }
             ],
-            "max_tokens": 500,
+            "max_tokens": 4096,
             "temperature": 0.5
         }
 
@@ -118,7 +169,14 @@ Be specific and descriptive. Do not be vague. Always respond in English only."""
                     analysis_result["image_data"] = encoded_image
                     return analysis_result
                 except json.JSONDecodeError:
-                    print(f"Error: Could not decode JSON from GovAI response: {message_content}")
+                    print(f"Warning: GovAI response was not valid JSON (possibly truncated). Attempting repair...")
+                    # Attempt to repair a truncated JSON response by closing open brackets
+                    repaired = _repair_truncated_json(json_string)
+                    if repaired:
+                        print("Successfully repaired truncated GovAI JSON response.")
+                        repaired["image_data"] = encoded_image
+                        return repaired
+                    print(f"Error: Could not decode or repair JSON from GovAI response: {message_content[:200]}...")
                     return None
             else:
                 print(f"Error: Unexpected response format from GovAI: {response_data}")
