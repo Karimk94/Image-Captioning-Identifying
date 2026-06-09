@@ -43,15 +43,19 @@ class VisionProcessor:
         encoded_image = base64.b64encode(image_bytes).decode('utf-8')
         image_data_url = f"data:image/jpeg;base64,{encoded_image}"
 
-        system_prompt = """You are an AI assistant specialized in analyzing images. You must respond in English only.
-You must respond with a single JSON object containing:
-1. "caption": A brief description of the main social interaction and location. Focus on the general activity (e.g., "people discussing in a meeting room"). Do NOT describe clothing, colors, or specific details like eating or drinking.
-2. "tags": A JSON array of 5-10 key concepts related to the setting and activity.
-Only respond with valid JSON, no additional text. Always respond in English."""
+        system_prompt = """You are an expert image analysis AI. Your task is to produce detailed, accurate, and objective descriptions of images.
+You must always respond with a single valid JSON object. Never include extra text outside the JSON.
+Your descriptions should cover:
+- Who is in the image: number of people, approximate age, gender, visible physical appearance.
+- What they are wearing: clothing type, colors, accessories, headwear, eyewear, etc.
+- What they are doing: actions, posture, gestures, expressions, interactions.
+- Where the scene takes place: environment, setting, location clues (indoor/outdoor, vehicle, building, nature, etc.).
+- What objects or notable elements are visible: vehicles, furniture, signs, animals, documents, technology, etc.
+Be specific and descriptive. Do not be vague. Always respond in English only."""
 
-        user_prompt = """Analyze this image and respond in English with a JSON object containing:
-1. "caption": A brief description of the main social interaction and location.
-2. "tags": An array of 5-10 key concepts related to the setting and activity."""
+        user_prompt = """Analyze this image carefully and respond with a JSON object containing:
+1. "caption": A detailed, accurate description of the image. Describe the subjects (people, animals, objects), their appearance (clothing, colors, accessories), their actions or expressions, and the setting or environment. Be thorough and specific — aim for 2 to 4 sentences.
+2. "tags": An array of 8-15 descriptive keywords covering people, clothing items, colors, objects, actions, setting, and mood."""
 
         print(f"Sending request to GovAI model: {GOVAI_MODEL}...")
         
@@ -143,10 +147,10 @@ Only respond with valid JSON, no additional text. Always respond in English."""
         encoded_image = base64.b64encode(image_bytes).decode('utf-8')
 
         prompt = """
-        Analyze the image and respond with a single JSON object.
-        The JSON object must contain two keys:
-        1. "caption": A brief description of the main social interaction and location. Focus on the general activity (e.g., "people discussing in a meeting room"). Do NOT describe clothing, colors, or specific details like eating or drinking.
-        2. "tags": A JSON array of 5-10 key concepts related to the setting and activity.
+        Analyze this image carefully and respond with a single JSON object containing two keys:
+        1. "caption": A detailed, accurate description of the image. Describe the subjects (people, animals, or objects), their appearance (clothing, colors, accessories), their actions or expressions, and the environment or setting. Be specific and thorough — aim for 2 to 4 sentences.
+        2. "tags": A JSON array of 8-15 descriptive keywords covering people, clothing items, colors, objects, actions, setting, and mood.
+        Respond only with valid JSON. Always respond in English.
         """
 
         print(f"Sending request to Ollama model: {OLLAMA_MODEL}...")
