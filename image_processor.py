@@ -23,6 +23,8 @@ def _repair_truncated_json(json_string):
     Attempts to repair a truncated JSON string by closing any open
     strings, arrays, and objects. Returns a parsed dict on success, or None.
     """
+    import re
+
     s = json_string.strip()
     if not s:
         return None
@@ -56,8 +58,15 @@ def _repair_truncated_json(json_string):
     if in_string:
         s += '"'
 
-    # Remove trailing incomplete tokens (e.g. a dangling comma before closing)
-    s = s.rstrip().rstrip(',')
+    # Remove trailing incomplete tokens:
+    # - dangling comma, colon, or incomplete key (e.g. `"caption": "some text", "ta`)
+    # Strip trailing whitespace first, then repeatedly clean up trailing noise
+    s = s.rstrip()
+    # Remove a trailing incomplete key-value like: , "somekey  or , "somekey":
+    s = re.sub(r',\s*"[^"]*"\s*:\s*$', '', s)
+    s = re.sub(r',\s*"[^"]*"\s*$', '', s)
+    # Remove trailing comma or colon
+    s = s.rstrip().rstrip(',').rstrip(':')
 
     # Close open brackets in reverse order
     for bracket in reversed(stack):
@@ -66,6 +75,10 @@ def _repair_truncated_json(json_string):
     try:
         return json.loads(s)
     except json.JSONDecodeError:
+        # Last resort: try to extract just the caption using regex
+        caption_match = re.search(r'"caption"\s*:\s*"((?:[^"\\]|\\.)*)"', json_string)
+        if caption_match:
+            return {"caption": caption_match.group(1), "tags": []}
         return None
 
 
@@ -134,7 +147,8 @@ Be specific and descriptive. Do not be vague. Always respond in English only."""
                 }
             ],
             "max_tokens": 4096,
-            "temperature": 0.5
+            "temperature": 0.3,
+            "response_format": {"type": "json_object"}
         }
 
         headers = {
@@ -170,13 +184,27 @@ Be specific and descriptive. Do not be vague. Always respond in English only."""
                     return analysis_result
                 except json.JSONDecodeError:
                     print(f"Warning: GovAI response was not valid JSON (possibly truncated). Attempting repair...")
+                    print(f"  Raw response (first 300 chars): {json_string[:300]}")
                     # Attempt to repair a truncated JSON response by closing open brackets
                     repaired = _repair_truncated_json(json_string)
                     if repaired:
                         print("Successfully repaired truncated GovAI JSON response.")
                         repaired["image_data"] = encoded_image
                         return repaired
-                    print(f"Error: Could not decode or repair JSON from GovAI response: {message_content[:200]}...")
+                    print(f"Error: Could not decode or repair JSON from GovAI response.")
+                    # Return a fallback with the raw text as caption
+                    # Try to extract any usable text from the response
+                    import re
+                    caption_match = re.search(r'"caption"\s*:\s*"((?:[^"\\]|\\.)*)"?', json_string)
+                    if caption_match:
+                        fallback_caption = caption_match.group(1)
+                        print(f"Extracted partial caption from malformed response.")
+                        return {
+                            "caption": fallback_caption,
+                            "tags": [],
+                            "image_data": encoded_image,
+                            "_warning": "Caption extracted from malformed JSON response"
+                        }
                     return None
             else:
                 print(f"Error: Unexpected response format from GovAI: {response_data}")
